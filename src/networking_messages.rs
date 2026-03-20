@@ -24,7 +24,7 @@
 //! (See k_ESteamNetworkingConfig_SymmetricConnect.)
 // TODO: examples here
 use crate::networking_types::{
-    NetConnectionInfo, NetConnectionRealTimeInfo, NetworkingConnectionState, NetworkingIdentity,
+    NetConnectionInfo, NetQuickConnectionInfo, NetworkingConnectionState, NetworkingIdentity,
     NetworkingMessage, SendFlags,
 };
 use crate::{register_callback, Callback, Inner, SteamError};
@@ -234,10 +234,10 @@ impl NetworkingMessages {
     ) -> (
         NetworkingConnectionState,
         Option<NetConnectionInfo>,
-        Option<NetConnectionRealTimeInfo>,
+        Option<NetQuickConnectionInfo>,
     ) {
         let mut connection_info: sys::SteamNetConnectionInfo_t = unsafe { std::mem::zeroed() };
-        let mut quick_status: sys::SteamNetConnectionRealTimeStatus_t =
+        let mut quick_status: sys::SteamNetworkingQuickConnectionStatus =
             unsafe { std::mem::zeroed() };
 
         let state = unsafe {
@@ -263,7 +263,7 @@ impl NetworkingMessages {
         };
 
         let quick_status = if state != NetworkingConnectionState::None {
-            Some(NetConnectionRealTimeInfo {
+            Some(NetQuickConnectionInfo {
                 inner: quick_status,
             })
         } else {

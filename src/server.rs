@@ -36,52 +36,7 @@ pub enum ServerMode {
     AuthenticationAndSecure,
 }
 
-/// Pass to SteamGameServer_Init to indicate that the same UDP port will be used for game traffic
-/// UDP queries for server browser pings and LAN discovery.  In this case, Steam will not open up a
-/// socket to handle server browser queries, and you must use ISteamGameServer::HandleIncomingPacket
-/// and ISteamGameServer::GetNextOutgoingPacket to handle packets related to server discovery on
-/// your socket.
-pub const QUERY_PORT_SHARED: u16 = sys::STEAMGAMESERVER_QUERY_PORT_SHARED;
-
 impl Server {
-    fn steam_game_server_init_ex(
-        un_ip: std::ffi::c_uint,
-        us_game_port: std::ffi::c_ushort,
-        us_query_port: std::ffi::c_ushort,
-        e_server_mode: EServerMode,
-        pch_version_string: *const c_char,
-        p_out_err_msg: *mut SteamErrMsg,
-    ) -> ESteamAPIInitResult {
-        let versions: Vec<&[u8]> = vec![
-            sys::STEAMUTILS_INTERFACE_VERSION,
-            sys::STEAMNETWORKINGUTILS_INTERFACE_VERSION,
-            sys::STEAMGAMESERVER_INTERFACE_VERSION,
-            sys::STEAMGAMESERVERSTATS_INTERFACE_VERSION,
-            sys::STEAMHTTP_INTERFACE_VERSION,
-            sys::STEAMINVENTORY_INTERFACE_VERSION,
-            sys::STEAMNETWORKING_INTERFACE_VERSION,
-            sys::STEAMNETWORKINGMESSAGES_INTERFACE_VERSION,
-            sys::STEAMNETWORKINGSOCKETS_INTERFACE_VERSION,
-            sys::STEAMUGC_INTERFACE_VERSION,
-            b"\0",
-        ];
-
-        let merged_versions: Vec<u8> = versions.into_iter().flatten().cloned().collect();
-        let merged_versions_ptr = merged_versions.as_ptr().cast::<::std::os::raw::c_char>();
-
-        return unsafe {
-            sys::SteamInternal_GameServer_Init_V2(
-                un_ip,
-                us_game_port,
-                us_query_port,
-                e_server_mode,
-                pch_version_string,
-                merged_versions_ptr,
-                p_out_err_msg,
-            )
-        };
-    }
-
     /// Attempts to initialize the steamworks api and returns
     /// a server to access the rest of the api.
     ///
@@ -103,11 +58,12 @@ impl Server {
     /// * The app ID isn't completely set up.
     pub fn init(
         ip: Ipv4Addr,
+        steam_port: u16,
         game_port: u16,
         query_port: u16,
         server_mode: ServerMode,
         version: &str,
-    ) -> SIResult<(Server, Client)> {
+    ) -> SResult<(Server, Client)> {
         unsafe {
             let version = CString::new(version).unwrap();
 
@@ -122,22 +78,19 @@ impl Server {
                 }
             };
 
-            let mut err_msg: sys::SteamErrMsg = [0; 1024];
-            let result = Self::steam_game_server_init_ex(
+            if !sys::SteamInternal_GameServer_Init(
                 raw_ip,
+                steam_port,
                 game_port,
                 query_port,
                 server_mode,
                 version.as_ptr(),
-                &mut err_msg,
-            );
-
-            if result != sys::ESteamAPIInitResult::k_ESteamAPIInitResult_OK {
-                return Err(SteamAPIInitError::from_result_and_message(result, err_msg));
+            ) {
+                return Err(SteamError::InitFailed);
             }
 
             sys::SteamAPI_ManualDispatch_Init();
-            let server_raw = sys::SteamAPI_SteamGameServer_v015();
+            let server_raw = sys::SteamAPI_SteamGameServer_v013();
             let server = Arc::new(Inner {
                 manager: Manager::Server,
                 callbacks: Callbacks {
@@ -210,27 +163,7 @@ impl Server {
         unsafe { SteamId(sys::SteamAPI_ISteamGameServer_GetSteamID(self.server)) }
     }
 
-    /// Retrieve an authentication session ticket that can be sent
-    /// to an entity that wishes to verify you.
-    ///
-    /// This ticket should not be reused.
-    ///
-    /// When creating ticket for use by the web API you should wait
-    /// for the `AuthSessionTicketResponse` event before trying to
-    /// use the ticket.
-    ///
-    /// When the multiplayer session terminates you must call
-    /// `cancel_authentication_ticket`
-    pub fn authentication_session_ticket_with_steam_id(
-        &self,
-        steam_id: SteamId,
-    ) -> (AuthTicket, Vec<u8>) {
-        self.authentication_session_ticket(NetworkingIdentity::new_steam_id(steam_id))
-    }
-    pub fn authentication_session_ticket(
-        &self,
-        network_identity: NetworkingIdentity,
-    ) -> (AuthTicket, Vec<u8>) {
+    pub fn authentication_session_ticket(&self) -> (AuthTicket, Vec<u8>) {
         unsafe {
             let mut ticket = vec![0; 1024];
             let mut ticket_len = 0;
@@ -239,7 +172,6 @@ impl Server {
                 ticket.as_mut_ptr().cast(),
                 1024,
                 &mut ticket_len,
-                network_identity.as_ptr(),
             );
             ticket.truncate(ticket_len as usize);
             (AuthTicket(auth_ticket), ticket)
@@ -426,7 +358,7 @@ impl Server {
     /// the steam matchmaking/server browser interfaces.
     pub fn enable_heartbeats(&self, active: bool) {
         unsafe {
-            sys::SteamAPI_ISteamGameServer_SetAdvertiseServerActive(self.server, active);
+            sys::SteamAPI_ISteamGameServer_EnableHeartbeats(self.server, active);
         }
     }
 
@@ -533,7 +465,7 @@ impl Server {
     /// **For this to work properly, you need to call `UGC::init_for_game_server()`!**
     pub fn ugc(&self) -> UGC {
         unsafe {
-            let ugc = sys::SteamAPI_SteamGameServerUGC_v021();
+            let ugc = sys::SteamAPI_SteamGameServerUGC_v015();
             debug_assert!(!ugc.is_null());
             UGC {
                 ugc,
@@ -579,7 +511,7 @@ impl Server {
 
     pub fn networking_sockets(&self) -> networking_sockets::NetworkingSockets {
         unsafe {
-            let sockets = sys::SteamAPI_SteamGameServerNetworkingSockets_SteamAPI_v012();
+            let sockets = sys::SteamAPI_SteamGameServerNetworkingSockets_SteamAPI_v009();
             debug_assert!(!sockets.is_null());
             networking_sockets::NetworkingSockets {
                 sockets,
@@ -608,6 +540,7 @@ impl Server {
 fn test() {
     let (server, single) = Server::init(
         [127, 0, 0, 1].into(),
+        23333,
         23334,
         23335,
         ServerMode::Authentication,
@@ -632,7 +565,7 @@ fn test() {
     });
 
     let id = server.steam_id();
-    let (auth, ticket) = server.authentication_session_ticket_with_steam_id(id);
+    let (auth, ticket) = server.authentication_session_ticket();
 
     println!("{:?}", server.begin_authentication_session(id, &ticket));
 

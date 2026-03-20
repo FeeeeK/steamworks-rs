@@ -10,7 +10,7 @@ use screenshots::Screenshots;
 pub use steamworks_sys as sys;
 #[cfg(not(feature = "raw-bindings"))]
 use steamworks_sys as sys;
-use sys::{EServerMode, ESteamAPIInitResult, SteamErrMsg};
+use sys::EServerMode;
 
 use core::ffi::c_void;
 use std::collections::HashMap;
@@ -33,7 +33,6 @@ pub use crate::networking::*;
 pub use crate::remote_play::*;
 pub use crate::remote_storage::*;
 pub use crate::server::*;
-pub use crate::timeline::*;
 pub use crate::ugc::*;
 pub use crate::user::*;
 pub use crate::user_stats::*;
@@ -57,15 +56,12 @@ mod remote_play;
 mod remote_storage;
 pub mod screenshots;
 mod server;
-pub mod timeline;
 mod ugc;
 mod user;
 mod user_stats;
 mod utils;
 
 pub type SResult<T> = Result<T, SteamError>;
-
-pub type SIResult<T> = Result<T, SteamAPIInitError>;
 
 pub(crate) fn to_steam_result(result: sys::EResult) -> SResult<()> {
     if result == sys::EResult::k_EResultOK {
@@ -220,13 +216,6 @@ where
 }
 
 impl Client {
-    /// Call to the native SteamAPI_Init function.
-    /// should not be used directly, but through either
-    /// init_flat() or init_flat_app()
-    unsafe fn steam_api_init_flat(p_out_err_msg: *mut SteamErrMsg) -> ESteamAPIInitResult {
-        unsafe { sys::SteamAPI_InitFlat(p_out_err_msg) }
-    }
-
     /// Attempts to initialize the steamworks api without full API integration
     /// through SteamAPI_InitFlat added in SDK 1.59
     /// and returns a client to access the rest of the api.
@@ -246,15 +235,12 @@ impl Client {
     /// * The game isn't running on the same user/level as the steam client
     /// * The user doesn't own a license for the game.
     /// * The app ID isn't completely set up.
-    pub fn init() -> SIResult<Client> {
+    pub fn init() -> SResult<Client> {
         static_assert_send::<Client>();
         static_assert_sync::<Client>();
         unsafe {
-            let mut err_msg: sys::SteamErrMsg = [0; 1024];
-            let result = Self::steam_api_init_flat(&mut err_msg);
-
-            if result != sys::ESteamAPIInitResult::k_ESteamAPIInitResult_OK {
-                return Err(SteamAPIInitError::from_result_and_message(result, err_msg));
+            if !sys::SteamAPI_Init() {
+                return Err(SteamError::InitFailed);
             }
 
             sys::SteamAPI_ManualDispatch_Init();
@@ -287,7 +273,7 @@ impl Client {
     /// * The game isn't running on the same user/level as the steam client
     /// * The user doesn't own a license for the game.
     /// * The app ID isn't completely set up.
-    pub fn init_app<ID: Into<AppId>>(app_id: ID) -> SIResult<Client> {
+    pub fn init_app<ID: Into<AppId>>(app_id: ID) -> SResult<Client> {
         let app_id = app_id.into().0.to_string();
         std::env::set_var("SteamAppId", &app_id);
         std::env::set_var("SteamGameId", app_id);
@@ -404,7 +390,7 @@ impl Client {
     /// Returns an accessor to the steam friends interface
     pub fn friends(&self) -> Friends {
         unsafe {
-            let friends = sys::SteamAPI_SteamFriends_v018();
+            let friends = sys::SteamAPI_SteamFriends_v017();
             debug_assert!(!friends.is_null());
             Friends {
                 friends: friends,
@@ -416,7 +402,7 @@ impl Client {
     /// Returns an accessor to the steam input interface
     pub fn input(&self) -> Input {
         unsafe {
-            let input = sys::SteamAPI_SteamInput_v006();
+            let input = sys::SteamAPI_SteamInput_v002();
             debug_assert!(!input.is_null());
             Input {
                 input,
@@ -428,7 +414,7 @@ impl Client {
     /// Returns an accessor to the steam user interface
     pub fn user(&self) -> User {
         unsafe {
-            let user = sys::SteamAPI_SteamUser_v023();
+            let user = sys::SteamAPI_SteamUser_v021();
             debug_assert!(!user.is_null());
             User {
                 user,
@@ -440,7 +426,7 @@ impl Client {
     /// Returns an accessor to the steam user stats interface
     pub fn user_stats(&self) -> UserStats {
         unsafe {
-            let us = sys::SteamAPI_SteamUserStats_v013();
+            let us = sys::SteamAPI_SteamUserStats_v012();
             debug_assert!(!us.is_null());
             UserStats {
                 user_stats: us,
@@ -452,7 +438,7 @@ impl Client {
     /// Returns an accessor to the steam remote play interface
     pub fn remote_play(&self) -> RemotePlay {
         unsafe {
-            let rp = sys::SteamAPI_SteamRemotePlay_v003();
+            let rp = sys::SteamAPI_SteamRemotePlay_v001();
             debug_assert!(!rp.is_null());
             RemotePlay {
                 rp,
@@ -464,7 +450,7 @@ impl Client {
     /// Returns an accessor to the steam remote storage interface
     pub fn remote_storage(&self) -> RemoteStorage {
         unsafe {
-            let rs = sys::SteamAPI_SteamRemoteStorage_v016();
+            let rs = sys::SteamAPI_SteamRemoteStorage_v014();
             debug_assert!(!rs.is_null());
             let util = sys::SteamAPI_SteamUtils_v010();
             debug_assert!(!util.is_null());
@@ -491,24 +477,11 @@ impl Client {
     /// Returns an accessor to the steam UGC interface (steam workshop)
     pub fn ugc(&self) -> UGC {
         unsafe {
-            let ugc = sys::SteamAPI_SteamUGC_v021();
+            let ugc = sys::SteamAPI_SteamUGC_v015();
             debug_assert!(!ugc.is_null());
             UGC {
                 ugc,
                 inner: self.inner.clone(),
-            }
-        }
-    }
-
-    /// Returns an accessor to the steam timeline interface
-    pub fn timeline(&self) -> Timeline {
-        unsafe {
-            let timeline = sys::SteamAPI_SteamTimeline_v004();
-
-            Timeline {
-                timeline,
-                disabled: timeline.is_null(),
-                _inner: self.inner.clone(),
             }
         }
     }
@@ -526,7 +499,7 @@ impl Client {
 
     pub fn networking_sockets(&self) -> networking_sockets::NetworkingSockets {
         unsafe {
-            let sockets = sys::SteamAPI_SteamNetworkingSockets_SteamAPI_v012();
+            let sockets = sys::SteamAPI_SteamNetworkingSockets_SteamAPI_v009();
             debug_assert!(!sockets.is_null());
             networking_sockets::NetworkingSockets {
                 sockets,
@@ -537,7 +510,7 @@ impl Client {
 
     pub fn networking_utils(&self) -> networking_utils::NetworkingUtils {
         unsafe {
-            let utils = sys::SteamAPI_SteamNetworkingUtils_SteamAPI_v004();
+            let utils = sys::SteamAPI_SteamNetworkingUtils_SteamAPI_v003();
             debug_assert!(!utils.is_null());
             networking_utils::NetworkingUtils {
                 utils,

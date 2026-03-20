@@ -1,5 +1,4 @@
 use super::*;
-use crate::networking_types::NetworkingIdentity;
 #[cfg(test)]
 use serial_test::serial;
 
@@ -25,27 +24,7 @@ impl User {
         unsafe { sys::SteamAPI_ISteamUser_BLoggedOn(self.user) }
     }
 
-    /// Retrieve an authentication session ticket that can be sent
-    /// to an entity that wishes to verify you.
-    ///
-    /// This ticket should not be reused.
-    ///
-    /// When creating ticket for use by the web API you should wait
-    /// for the `AuthSessionTicketResponse` event before trying to
-    /// use the ticket.
-    ///
-    /// When the multiplayer session terminates you must call
-    /// `cancel_authentication_ticket`
-    pub fn authentication_session_ticket_with_steam_id(
-        &self,
-        steam_id: SteamId,
-    ) -> (AuthTicket, Vec<u8>) {
-        self.authentication_session_ticket(NetworkingIdentity::new_steam_id(steam_id))
-    }
-    pub fn authentication_session_ticket(
-        &self,
-        network_identity: NetworkingIdentity,
-    ) -> (AuthTicket, Vec<u8>) {
+    pub fn authentication_session_ticket(&self) -> (AuthTicket, Vec<u8>) {
         unsafe {
             let mut ticket = vec![0; 1024];
             let mut ticket_len = 0;
@@ -54,7 +33,6 @@ impl User {
                 ticket.as_mut_ptr().cast(),
                 1024,
                 &mut ticket_len,
-                network_identity.as_ptr(),
             );
             ticket.truncate(ticket_len as usize);
             (AuthTicket(auth_ticket), ticket)
@@ -125,30 +103,6 @@ impl User {
         }
     }
 
-    /// Retrieve an authentication ticket to be sent to the entity that
-    /// wishes to authenticate you using the
-    /// ISteamUserAuth/AuthenticateUserTicket Web API.
-    ///
-    /// The calling application must wait for the
-    /// `TicketForWebApiResponse` callback generated  
-    /// by the API call to access the ticket.
-    ///  
-    /// It is best practice to use an identity string for
-    /// each service that will consume tickets.
-    ///   
-    /// This API can not be used to create a ticket for
-    /// use by the BeginAuthSession/ISteamGameServer::BeginAuthSession.
-    /// Use the `authentication_session_ticket` API instead
-    pub fn authentication_session_ticket_for_webapi(&self, identity: &str) -> AuthTicket {
-        unsafe {
-            let c_str = CString::new(identity).unwrap();
-            let auth_ticket =
-                sys::SteamAPI_ISteamUser_GetAuthTicketForWebApi(self.user, c_str.as_ptr());
-
-            AuthTicket(auth_ticket)
-        }
-    }
-
     /// Checks if the user owns a piece of DLC specified by app id.
     ///
     /// This can only be called after authenticating
@@ -208,7 +162,7 @@ fn test_auth_dll() {
     });
 
     let id = user.steam_id();
-    let (auth, ticket) = user.authentication_session_ticket_with_steam_id(id);
+    let (auth, ticket) = user.authentication_session_ticket();
 
     println!("{:?}", auth);
     println!("{:?}", ticket);
@@ -259,47 +213,6 @@ impl_callback!(cb: GetAuthSessionTicketResponse_t => AuthSessionTicketResponse {
     }
 });
 
-#[test]
-#[serial]
-fn test_auth_webapi() {
-    let client = Client::init().unwrap();
-    let user = client.user();
-
-    let _cb = client.register_callback(|v: TicketForWebApiResponse| {
-        println!("Got webapi auth response: {:?}", v)
-    });
-
-    let auth = user.authentication_session_ticket_for_webapi("myIdentity");
-
-    println!("{:?}", auth);
-
-    for _ in 0..20 {
-        client.run_callbacks();
-        ::std::thread::sleep(::std::time::Duration::from_millis(100));
-    }
-
-    println!("END");
-}
-
-/// Called when generating a authentication session ticket for web api.
-///
-/// This can be used to verify the ticket was created successfully.
-#[derive(Debug)]
-pub struct TicketForWebApiResponse {
-    pub ticket_handle: AuthTicket,
-    pub result: SResult<()>,
-    pub ticket_len: i32,
-    pub ticket: Vec<u8>,
-}
-
-impl_callback!(cb: GetTicketForWebApiResponse_t => TicketForWebApiResponse {
-    Self {
-        ticket_handle: AuthTicket(cb.m_hAuthTicket),
-        result: crate::to_steam_result(cb.m_eResult),
-        ticket_len: cb.m_cubTicket,
-        ticket: cb.m_rgubTicket.to_vec(),
-    }
-});
 
 /// Called when an authentication ticket has been
 /// validated.

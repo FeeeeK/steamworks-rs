@@ -13,7 +13,6 @@ use std::sync::{Arc, Weak};
 pub enum CallbackResult {
     AuthSessionTicketResponse(AuthSessionTicketResponse),
     DownloadItemResult(DownloadItemResult),
-    FloatingGamepadTextInputDismissed(FloatingGamepadTextInputDismissed),
     GameLobbyJoinRequested(GameLobbyJoinRequested),
     GameOverlayActivated(GameOverlayActivated),
     GamepadTextInputDismissed(GamepadTextInputDismissed),
@@ -38,7 +37,6 @@ pub enum CallbackResult {
     SteamServerConnectFailure(SteamServerConnectFailure),
     SteamServersConnected(SteamServersConnected),
     SteamServersDisconnected(SteamServersDisconnected),
-    TicketForWebApiResponse(TicketForWebApiResponse),
     UserAchievementStored(UserAchievementStored),
     UserAchievementIconFetched(UserAchievementIconFetched),
     UserStatsReceived(UserStatsReceived),
@@ -61,9 +59,6 @@ impl CallbackResult {
                 Self::AuthSessionTicketResponse(AuthSessionTicketResponse::from_raw(data))
             }
             DownloadItemResult::ID => Self::DownloadItemResult(DownloadItemResult::from_raw(data)),
-            FloatingGamepadTextInputDismissed::ID => Self::FloatingGamepadTextInputDismissed(
-                FloatingGamepadTextInputDismissed::from_raw(data),
-            ),
             GameLobbyJoinRequested::ID => {
                 Self::GameLobbyJoinRequested(GameLobbyJoinRequested::from_raw(data))
             }
@@ -100,9 +95,6 @@ impl CallbackResult {
             }
             SteamServersDisconnected::ID => {
                 Self::SteamServersDisconnected(SteamServersDisconnected::from_raw(data))
-            }
-            TicketForWebApiResponse::ID => {
-                Self::TicketForWebApiResponse(TicketForWebApiResponse::from_raw(data))
             }
             UserAchievementStored::ID => {
                 Self::UserAchievementStored(UserAchievementStored::from_raw(data))

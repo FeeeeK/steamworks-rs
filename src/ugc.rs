@@ -97,7 +97,6 @@ pub enum UGCQueryType {
     RankedByLifetimeAveragePlaytime,
     RankedByPlaytimeSessionsTrend,
     RankedByLifetimePlaytimeSessions,
-    RankedByLastUpdatedDate,
 }
 impl Into<sys::EUGCQuery> for UGCQueryType {
     fn into(self) -> sys::EUGCQuery {
@@ -148,9 +147,6 @@ impl Into<sys::EUGCQuery> for UGCQueryType {
             }
             UGCQueryType::RankedByLifetimePlaytimeSessions => {
                 sys::EUGCQuery::k_EUGCQuery_RankedByLifetimePlaytimeSessions
-            }
-            UGCQueryType::RankedByLastUpdatedDate => {
-                sys::EUGCQuery::k_EUGCQuery_RankedByLastUpdatedDate
             }
         }
     }
@@ -421,66 +417,6 @@ bitflags! {
     }
 }
 
-/// Users can control what user-generated content they want to see under the Mature Content Filtering section in their preferences.
-/// This filtering is done automatically by Steam servers, but first, user-generated content must be tagged appropriately.
-/// Developers can use AddContentDescriptor and RemoveContentDescriptor calls to manage content descriptors a piece of UGC has.
-/// These can be retrieved from the result of a query via GetQueryUGCContentDescriptors.
-pub enum UGCContentDescriptorID {
-    /// Some Nudity or Sexual Content: Contains content that has some nudity or sexual themes, but not as the primary focus.
-    NudityOrSexualContent = 1,
-    /// Frequent Violence or Gore: Contains content that features extreme violence or gore.
-    FrequentViolenceOrGore = 2,
-    /// Adult Only Sexual Content: Contains content that is sexually explicit or graphic and is intended for adults only. Users must affirm that they are at least eighteen years old before they can view content with this content descriptor.
-    AdultOnlySexualContent = 3,
-    /// Frequent Nudity or Sexual Content: Contains content that primarily features nudity or sexual themes. Users must affirm that they are at least eighteen years old before they can view content with this content descriptor.
-    GratuitousSexualContent = 4,
-    /// General Mature Content: Contains mature topics that may not be appropriate for all audiences.
-    AnyMatureContent = 5,
-}
-impl Into<sys::EUGCContentDescriptorID> for UGCContentDescriptorID {
-    fn into(self) -> sys::EUGCContentDescriptorID {
-        match self {
-            UGCContentDescriptorID::NudityOrSexualContent => {
-                sys::EUGCContentDescriptorID::k_EUGCContentDescriptor_NudityOrSexualContent
-            }
-            UGCContentDescriptorID::FrequentViolenceOrGore => {
-                sys::EUGCContentDescriptorID::k_EUGCContentDescriptor_FrequentViolenceOrGore
-            }
-            UGCContentDescriptorID::AdultOnlySexualContent => {
-                sys::EUGCContentDescriptorID::k_EUGCContentDescriptor_AdultOnlySexualContent
-            }
-            UGCContentDescriptorID::GratuitousSexualContent => {
-                sys::EUGCContentDescriptorID::k_EUGCContentDescriptor_GratuitousSexualContent
-            }
-            UGCContentDescriptorID::AnyMatureContent => {
-                sys::EUGCContentDescriptorID::k_EUGCContentDescriptor_AnyMatureContent
-            }
-        }
-    }
-}
-impl From<sys::EUGCContentDescriptorID> for UGCContentDescriptorID {
-    fn from(content_descriptor_id: sys::EUGCContentDescriptorID) -> UGCContentDescriptorID {
-        match content_descriptor_id {
-            sys::EUGCContentDescriptorID::k_EUGCContentDescriptor_NudityOrSexualContent => {
-                UGCContentDescriptorID::NudityOrSexualContent
-            }
-            sys::EUGCContentDescriptorID::k_EUGCContentDescriptor_FrequentViolenceOrGore => {
-                UGCContentDescriptorID::FrequentViolenceOrGore
-            }
-            sys::EUGCContentDescriptorID::k_EUGCContentDescriptor_AdultOnlySexualContent => {
-                UGCContentDescriptorID::AdultOnlySexualContent
-            }
-            sys::EUGCContentDescriptorID::k_EUGCContentDescriptor_GratuitousSexualContent => {
-                UGCContentDescriptorID::GratuitousSexualContent
-            }
-            sys::EUGCContentDescriptorID::k_EUGCContentDescriptor_AnyMatureContent => {
-                UGCContentDescriptorID::AnyMatureContent
-            }
-            _ => unreachable!(),
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct DownloadItemResult {
@@ -615,17 +551,12 @@ impl UGC {
     ///
     /// Set `include_locally_disabled` to `true` to include items that are
     /// locally disabled.
-    pub fn subscribed_items(&self, include_locally_disabled: bool) -> Vec<PublishedFileId> {
+    pub fn subscribed_items(&self) -> Vec<PublishedFileId> {
         unsafe {
-            let count =
-                sys::SteamAPI_ISteamUGC_GetNumSubscribedItems(self.ugc, include_locally_disabled);
+            let count = sys::SteamAPI_ISteamUGC_GetNumSubscribedItems(self.ugc);
             let mut data: Vec<sys::PublishedFileId_t> = vec![0; count as usize];
-            let gotten_count = sys::SteamAPI_ISteamUGC_GetSubscribedItems(
-                self.ugc,
-                data.as_mut_ptr(),
-                count,
-                include_locally_disabled,
-            );
+            let gotten_count =
+                sys::SteamAPI_ISteamUGC_GetSubscribedItems(self.ugc, data.as_mut_ptr(), count);
             debug_assert!(count == gotten_count);
             data.into_iter().map(|v| PublishedFileId(v)).collect()
         }
@@ -1022,14 +953,13 @@ impl UpdateHandle {
         self
     }
 
-    pub fn tags<S: AsRef<str>>(self, tags: Vec<S>, allow_admin_tags: bool) -> Self {
+    pub fn tags<S: AsRef<str>>(self, tags: Vec<S>) -> Self {
         unsafe {
             let mut tags = SteamParamStringArray::new(&tags);
             assert!(sys::SteamAPI_ISteamUGC_SetItemTags(
                 self.ugc,
                 self.handle,
-                &tags.as_raw(),
-                allow_admin_tags
+                &tags.as_raw()
             ));
         }
         self
@@ -1056,28 +986,6 @@ impl UpdateHandle {
                 self.ugc,
                 self.handle,
                 key.as_ptr()
-            ));
-        }
-        self
-    }
-
-    pub fn add_content_descriptor(self, desc_id: UGCContentDescriptorID) -> Self {
-        unsafe {
-            assert!(sys::SteamAPI_ISteamUGC_AddContentDescriptor(
-                self.ugc,
-                self.handle,
-                desc_id.into(),
-            ));
-        }
-        self
-    }
-
-    pub fn remove_content_descriptor(self, desc_id: UGCContentDescriptorID) -> Self {
-        unsafe {
-            assert!(sys::SteamAPI_ISteamUGC_RemoveContentDescriptor(
-                self.ugc,
-                self.handle,
-                desc_id.into()
             ));
         }
         self
@@ -1527,7 +1435,7 @@ impl QueryHandle {
                 &inner,
                 api_call,
                 move |v, io_error| {
-                    let ugc = sys::SteamAPI_SteamUGC_v021();
+                    let ugc = sys::SteamAPI_SteamUGC_v015();
                     if io_error {
                         sys::SteamAPI_ISteamUGC_ReleaseQueryUGCRequest(ugc, handle);
                         cb(Err(SteamError::IOFailure));
@@ -1662,26 +1570,6 @@ impl<'a> QueryResults<'a> {
         }
     }
 
-    /// Gets UGCContentDescriptors of the published file at the specified index.
-    pub fn content_descriptor(&self, index: u32) -> Vec<UGCContentDescriptorID> {
-        let mut descriptors: [sys::EUGCContentDescriptorID; 10] = unsafe { std::mem::zeroed() };
-        let max_entries = descriptors.len() as std::ffi::c_uint;
-
-        let num_descriptors = unsafe {
-            sys::SteamAPI_ISteamUGC_GetQueryUGCContentDescriptors(
-                self.ugc,
-                self.handle,
-                index,
-                descriptors.as_mut_ptr(),
-                max_entries,
-            )
-        } as usize;
-
-        Vec::from(&descriptors[..num_descriptors])
-            .iter()
-            .map(|&x| x.into())
-            .collect()
-    }
 
     /// Gets a result.
     ///

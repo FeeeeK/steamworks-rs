@@ -23,24 +23,14 @@ pub enum InputType {
     MobileTouch,
     PS3Controller,
     PS5Controller,
-    SteamDeckController,
 }
 
 impl Input {
     /// Init must be called when starting use of this interface.
     /// if explicitly_call_run_frame is called then you will need to manually call RunFrame
     /// each frame, otherwise Steam Input will updated when SteamAPI_RunCallbacks() is called
-    pub fn init(&self, explicitly_call_run_frame: bool) -> bool {
-        unsafe { sys::SteamAPI_ISteamInput_Init(self.input, explicitly_call_run_frame) }
-    }
-
-    /// Synchronize API state with the latest Steam Input action data available. This
-    /// is performed automatically by SteamAPI_RunCallbacks, but for the absolute lowest
-    /// possible latency, you call this directly before reading controller state.
-    /// Note: This must be called from somewhere before GetConnectedControllers will
-    /// return any handles
-    pub fn run_frame(&self) {
-        unsafe { sys::SteamAPI_ISteamInput_RunFrame(self.input, false) }
+    pub fn init(&self) -> bool {
+        unsafe { sys::SteamAPI_ISteamInput_Init(self.input) }
     }
 
     /// Returns a list of the currently connected controllers
@@ -63,14 +53,6 @@ impl Input {
                 self.input,
                 handles.as_mut_ptr(),
             ) as usize;
-        }
-    }
-
-    /// Allows to load a specific Action Manifest File localy
-    pub fn set_input_action_manifest_file_path(&self, path: &str) -> bool {
-        let path = CString::new(path).unwrap();
-        unsafe {
-            sys::SteamAPI_ISteamInput_SetInputActionManifestFilePath(self.input, path.as_ptr())
         }
     }
 
@@ -111,9 +93,7 @@ impl Input {
             sys::ESteamInputType::k_ESteamInputType_SwitchProController => {
                 InputType::SwitchProController
             }
-            sys::ESteamInputType::k_ESteamInputType_SteamDeckController => {
-                InputType::SteamDeckController
-            }
+
             _ => InputType::Unknown,
         }
     }
@@ -122,7 +102,7 @@ impl Input {
     pub fn get_glyph_for_action_origin(&self, action_origin: sys::EInputActionOrigin) -> String {
         unsafe {
             let glyph_path =
-                sys::SteamAPI_ISteamInput_GetGlyphForActionOrigin_Legacy(self.input, action_origin);
+                sys::SteamAPI_ISteamInput_GetGlyphForActionOrigin(self.input, action_origin);
             let glyph_path = CStr::from_ptr(glyph_path);
             glyph_path.to_string_lossy().into_owned()
         }

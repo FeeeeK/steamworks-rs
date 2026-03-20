@@ -23,13 +23,6 @@ impl_callback!(cb: GamepadTextInputDismissed_t => GamepadTextInputDismissed {
     }
 });
 
-#[derive(Clone, Debug)]
-pub struct FloatingGamepadTextInputDismissed;
-
-impl_callback!(_cb: FloatingGamepadTextInputDismissed_t => FloatingGamepadTextInputDismissed {
-    Self
-});
-
 pub enum NotificationPosition {
     TopLeft,
     TopRight,
@@ -68,32 +61,6 @@ impl From<GamepadTextInputLineMode> for sys::EGamepadTextInputLineMode {
             }
             GamepadTextInputLineMode::MultipleLines => {
                 sys::EGamepadTextInputLineMode::k_EGamepadTextInputLineModeMultipleLines
-            }
-        }
-    }
-}
-
-pub enum FloatingGamepadTextInputMode {
-    SingleLine,
-    MultipleLines,
-    Email,
-    Numeric,
-}
-
-impl From<FloatingGamepadTextInputMode> for sys::EFloatingGamepadTextInputMode {
-    fn from(mode: FloatingGamepadTextInputMode) -> Self {
-        match mode {
-            FloatingGamepadTextInputMode::SingleLine => {
-                sys::EFloatingGamepadTextInputMode::k_EFloatingGamepadTextInputModeModeSingleLine
-            }
-            FloatingGamepadTextInputMode::MultipleLines => {
-                sys::EFloatingGamepadTextInputMode::k_EFloatingGamepadTextInputModeModeMultipleLines
-            }
-            FloatingGamepadTextInputMode::Email => {
-                sys::EFloatingGamepadTextInputMode::k_EFloatingGamepadTextInputModeModeEmail
-            }
-            FloatingGamepadTextInputMode::Numeric => {
-                sys::EFloatingGamepadTextInputMode::k_EFloatingGamepadTextInputModeModeNumeric
             }
         }
     }
@@ -231,11 +198,6 @@ impl Utils {
         unsafe { sys::SteamAPI_ISteamUtils_IsSteamInBigPictureMode(self.utils) }
     }
 
-    /// Checks if Steam is running on a Steam Deck device.
-    pub fn is_steam_running_on_steam_deck(&self) -> bool {
-        unsafe { sys::SteamAPI_ISteamUtils_IsSteamRunningOnSteamDeck(self.utils) }
-    }
-
     /// Activates the Big Picture text input dialog which only supports gamepad input.
     pub fn show_gamepad_text_input<F>(
         &self,
@@ -263,39 +225,6 @@ impl Utils {
                     .as_ref()
                     .map(|s| s.as_ptr())
                     .unwrap_or(std::ptr::null()),
-            )
-        }
-    }
-
-    /// Opens a floating keyboard over the game content and sends OS keyboard keys directly to the game.
-    ///
-    /// The text field position is specified in pixels relative the origin of the game window and is used to
-    /// position the floating keyboard in a way that doesn't cover the text field.
-    ///
-    /// Callback is triggered when user dismisses the text input
-    pub fn show_floating_gamepad_text_input<F>(
-        &self,
-        keyboard_mode: FloatingGamepadTextInputMode,
-        x: i32,
-        y: i32,
-        width: i32,
-        height: i32,
-        mut dismissed_cb: F,
-    ) -> bool
-    where
-        F: FnMut() + 'static + Send, // TODO: Support FnOnce callbacks
-    {
-        unsafe {
-            register_callback(&self._inner, move |_: FloatingGamepadTextInputDismissed| {
-                dismissed_cb();
-            });
-            sys::SteamAPI_ISteamUtils_ShowFloatingGamepadTextInput(
-                self.utils,
-                keyboard_mode.into(),
-                x,
-                y,
-                width,
-                height,
             )
         }
     }
