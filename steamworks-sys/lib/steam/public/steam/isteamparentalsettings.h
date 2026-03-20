@@ -29,8 +29,6 @@ enum EParentalFeature
 	k_EFeatureLibrary = 11,
 	k_EFeatureTest = 12,
 	k_EFeatureSiteLicense = 13,
-	k_EFeatureKioskMode_Deprecated = 14,
-	k_EFeatureBlockAlways = 15,
 	k_EFeatureMax
 };
 
